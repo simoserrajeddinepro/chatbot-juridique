@@ -1,0 +1,24 @@
+# FastAPI & Server
+fastapi==0.135.3
+uvicorn[standard]==0.30.6
+gunicorn==22.0.0
+
+# Database
+sqlalchemy==2.0.35
+psycopg2-binary==2.9.9
+
+# Authentication
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.0
+
+# AI / RAG
+groq==0.11.0
+faiss-cpu==1.8.0.post1
+sentence-transformers==3.1.1
+pypdf==4.3.1
+numpy==1.26.4
+
+# Utilities
+python-dotenv==1.0.1
+python-multipart==0.0.9
+pydantic==2.9.2

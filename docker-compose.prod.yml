@@ -1,0 +1,84 @@
+# ============================================
+# Docker Compose - Production
+# Usage: docker compose -f docker-compose.prod.yml up --build -d
+# ============================================
+
+services:
+  # ---- PostgreSQL + pgvector ----
+  db:
+    image: pgvector/pgvector:0.8.2-pg18-trixie
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:-chatbot_db}
+    # No port exposed in production
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- FastAPI Backend (gunicorn) ----
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: production
+    restart: always
+    # No port exposed externally — nginx proxies to it
+    expose:
+      - "8000"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-chatbot_db}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required in production}
+    volumes:
+      - documents_data:/app/documents_juridiques
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ---- Nginx (serves React build + reverse proxy) ----
+  frontend:
+    build:
+      context: .
+      dockerfile: fastapi_v2/Dockerfile
+      target: production
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  # ---- (Optional) Background Worker ----
+  # worker:
+  #   build:
+  #     context: .
+  #     dockerfile: backend/Dockerfile
+  #     target: production
+  #   restart: always
+  #   command: ["python", "worker.py"]
+  #   environment:
+  #     - DB_HOST=db
+  #     - DB_PORT=5432
+  #     - DB_NAME=${DB_NAME:-chatbot_db}
+  #     - DB_USER=${DB_USER:-postgres}
+  #     - DB_PASSWORD=${DB_PASSWORD}
+  #     - GROQ_API_KEY=${GROQ_API_KEY}
+  #   volumes:
+  #     - documents_data:/app/documents_juridiques
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+
+volumes:
+  postgres_data:
+  documents_data:

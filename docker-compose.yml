@@ -1,0 +1,93 @@
+# ============================================
+# Docker Compose - Development
+# Usage: docker compose up --build
+# ============================================
+
+services:
+  # ---- PostgreSQL + pgvector ----
+  db:
+    image: pgvector/pgvector:0.8.2-pg18-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:-chatbot_db}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---- FastAPI Backend ----
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-chatbot_db}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - JWT_SECRET=${JWT_SECRET:-super-secret-key-pour-ce-tp-1234}
+    volumes:
+      - ./backend:/app/backend
+      - ./documents_juridiques:/app/documents_juridiques
+      - ./documents_juridiques:/app/backend/documents_juridiques
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ---- React + Vite Frontend ----
+  frontend:
+    build:
+      context: .
+      dockerfile: fastapi_v2/Dockerfile
+      target: dev
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_PROXY_TARGET=http://backend:8000
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./fastapi_v2:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+  # ---- (Optional) Background Worker ----
+  # Uncomment to enable a background worker for heavy tasks
+  # worker:
+  #   build:
+  #     context: .
+  #     dockerfile: backend/Dockerfile
+  #     target: dev
+  #   restart: unless-stopped
+  #   command: ["python", "worker.py"]
+  #   environment:
+  #     - DB_HOST=db
+  #     - DB_PORT=5432
+  #     - DB_NAME=${DB_NAME:-chatbot_db}
+  #     - DB_USER=${DB_USER:-postgres}
+  #     - DB_PASSWORD=${DB_PASSWORD}
+  #     - GROQ_API_KEY=${GROQ_API_KEY}
+  #   volumes:
+  #     - ./backend:/app/backend
+  #     - ./documents_juridiques:/app/documents_juridiques
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+
+volumes:
+  postgres_data:
